@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Кино-эмодзи — угадай фильм</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --kp-orange: #FF5500;
+    --kp-orange-soft: #FF7A33;
+    --bg: #0C0C0F;
+    --panel: #17171C;
+    --panel-2: #1F1F26;
+    --text: #F2F0EC;
+    --text-dim: #9B9AA3;
+    --good: #3DBB6A;
+    --bad: #E0453A;
+    --gold: #FFC94D;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overflow-x: hidden;
+    user-select: none;
+  }
+  .app { max-width: 420px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; padding: 16px 16px 24px; }
+
+  /* ---------- Брендинг Кинопоиска ---------- */
+  .rays-bg {
+    position: absolute; inset: -25% -45%; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(ellipse 60% 40% at 50% 42%, var(--bg) 0 60%, rgba(12,12,15,0) 80%),
+      repeating-conic-gradient(from 0deg at 50% 42%,
+        rgba(255,85,0,0) 0deg 4.4deg,
+        rgba(255,110,20,.5) 4.4deg 5deg);
+    animation: rays-glow 5s ease-in-out infinite;
+  }
+  @keyframes rays-glow { 50% { opacity: .5; } }
+  .wordmark {
+    display: flex; align-items: center; justify-content: center; margin-bottom: 22px;
+    filter: drop-shadow(0 0 24px rgba(255,85,0,.35));
+  }
+  .wordmark svg { width: min(76vw, 300px); height: auto; }
+  .z1 { position: relative; z-index: 1; }
+
+  /* ---------- Header ---------- */
+  .top {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: .2px; }
+  .brand-dot { width: 22px; height: 22px; border-radius: 6px; background: var(--kp-orange); display: grid; place-items: center; font-size: 13px; }
+  .hud { display: flex; gap: 8px; }
+  .pill {
+    background: var(--panel); border-radius: 999px; padding: 6px 12px;
+    font-size: 13px; font-weight: 700; color: var(--text-dim);
+    display: flex; align-items: center; gap: 5px;
+  }
+  .pill b { color: var(--text); }
+  .pill.streak-on { background: rgba(255,85,0,.16); color: var(--kp-orange-soft); }
+  .pill.streak-on b { color: var(--kp-orange-soft); }
+
+  /* ---------- Progress ---------- */
+  .progress { display: flex; gap: 5px; margin-bottom: 18px; }
+  .seg { flex: 1; height: 5px; border-radius: 3px; background: var(--panel-2); transition: background .3s; }
+  .seg.done-good { background: var(--good); }
+  .seg.done-bad { background: var(--bad); }
+  .seg.active { background: var(--kp-orange); animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity: .45; } }
+
+  /* ---------- Film frame (signature) ---------- */
+  .frame {
+    background: #000; border-radius: 18px; overflow: hidden;
+    box-shadow: 0 0 0 1px #26262e, 0 18px 40px -18px rgba(255,85,0,.35);
+    margin-bottom: 18px;
+  }
+  .letterbox { height: 26px; background: #050506; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; }
+  .letterbox span { font-size: 10px; letter-spacing: 2.5px; color: #4a4a54; font-weight: 700; }
+  .rec { display: flex; align-items: center; gap: 5px; font-size: 10px; color: #4a4a54; letter-spacing: 2px; font-weight: 700; }
+  .rec::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--bad); animation: pulse 1.4s infinite; }
+  .screen {
+    min-height: 150px; display: grid; place-items: center; padding: 24px 16px;
+    background: radial-gradient(120% 120% at 50% 0%, #1d1d24 0%, #101014 70%);
+  }
+  .emoji {
+    font-size: 44px; letter-spacing: 8px; text-align: center; line-height: 1.35;
+    animation: drop .45s cubic-bezier(.2,.9,.3,1.2);
+  }
+  @keyframes drop { from { transform: translateY(-14px) scale(.9); opacity: 0; } }
+  .hint { text-align: center; color: var(--text-dim); font-size: 13px; padding-bottom: 14px; }
+
+  /* ---------- Answers ---------- */
+  .answers { display: flex; flex-direction: column; gap: 10px; }
+  .answer {
+    background: var(--panel); border: 1px solid #26262e; border-radius: 14px;
+    padding: 15px 16px; font-size: 15.5px; font-weight: 600; color: var(--text);
+    text-align: left; width: 100%; cursor: pointer; transition: transform .08s, background .2s, border-color .2s;
+  }
+  .answer:active { transform: scale(.98); }
+  .answer.correct { background: rgba(61,187,106,.16); border-color: var(--good); color: var(--good); }
+  .answer.wrong { background: rgba(224,69,58,.14); border-color: var(--bad); color: var(--bad); animation: shake .35s; }
+  .answer.dim { opacity: .38; }
+  @keyframes shake { 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+
+  .toast {
+    text-align: center; font-weight: 800; font-size: 15px; height: 24px; margin-top: 14px;
+    opacity: 0; transition: opacity .2s;
+  }
+  .toast.show { opacity: 1; }
+  .toast.good { color: var(--good); }
+  .toast.bad { color: var(--bad); }
+  .toast.bonus { color: var(--gold); }
+
+  /* ---------- Screens ---------- */
+  .view { display: none; flex: 1; flex-direction: column; position: relative; }
+  .view.on { display: flex; animation: fade .35s; }
+  @keyframes fade { from { opacity: 0; transform: translateY(8px); } }
+
+  .center { flex: 1; display: flex; flex-direction: column; justify-content: center; text-align: center; }
+  h1 { font-size: 27px; font-weight: 800; line-height: 1.2; margin-bottom: 10px; }
+  h1 .o { color: var(--kp-orange); }
+  .lead { color: var(--text-dim); font-size: 15px; line-height: 1.5; margin-bottom: 26px; }
+  .big-emoji { font-size: 62px; margin-bottom: 18px; }
+
+  .btn {
+    background: var(--kp-orange); color: #fff; border: none; border-radius: 14px;
+    padding: 16px; font-size: 16px; font-weight: 800; width: 100%; cursor: pointer;
+    transition: transform .08s, filter .2s;
+  }
+  .btn:active { transform: scale(.97); filter: brightness(1.1); }
+  .btn.ghost { background: var(--panel); color: var(--text); margin-top: 10px; }
+  .btn.link { text-decoration: none; display: block; text-align: center; }
+
+  /* ---------- Promo ---------- */
+  .promo-card {
+    background: linear-gradient(150deg, #241407 0%, #17171C 55%);
+    border: 1px solid rgba(255,85,0,.4); border-radius: 18px;
+    padding: 22px 18px; margin-bottom: 18px;
+  }
+  .promo-label { font-size: 12px; letter-spacing: 2px; color: var(--kp-orange-soft); font-weight: 800; margin-bottom: 10px; }
+  .promo-code {
+    display: block; text-decoration: none;
+    background: #0C0C0F; border: 1.5px dashed rgba(255,85,0,.55); border-radius: 12px;
+    padding: 14px; font-size: 22px; font-weight: 800; letter-spacing: 3px;
+    font-family: "SF Mono", Menlo, monospace; color: var(--text); cursor: pointer;
+    transition: border-color .2s;
+  }
+  .promo-code:active { border-color: var(--kp-orange); }
+  .promo-note { font-size: 12.5px; color: var(--text-dim); margin-top: 10px; }
+  .copied { color: var(--good) !important; font-weight: 700; }
+
+  .stats { display: flex; gap: 10px; justify-content: center; margin-bottom: 22px; }
+  .stat { background: var(--panel); border-radius: 14px; padding: 12px 18px; min-width: 88px; }
+  .stat b { display: block; font-size: 22px; font-weight: 800; }
+  .stat span { font-size: 12px; color: var(--text-dim); }
+
+  /* ---------- Confetti ---------- */
+  .confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 5; }
+  .c-bit { position: absolute; width: 8px; height: 12px; top: -20px; animation: fall linear forwards; }
+  @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
+</style>
+</head>
+<body>
+<!-- Официальный логотип Кинопоиска -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <radialGradient id="kpGrad" cx="0" cy="0" r="1" gradientTransform="matrix(544.892 19.3431 -2.78995 81.2223 0 1.22362)" gradientUnits="userSpaceOnUse">
+      <stop offset="0.5" stop-color="#FF5500"/>
+      <stop offset="1" stop-color="#BBFF00"/>
+    </radialGradient>
+  </defs>
+  <symbol id="kp-k" viewBox="0 0 57 64">
+    <path d="M11.9934 1.22346V19.9339L24.4951 1.22346H39.0511L17.9071 23.1508L56.512 1.22346V15.1455L21.8495 28.3715L56.512 25.0703V38.2963L21.8495 34.9951L56.512 48.221V62.1431L17.9071 40.2158L39.0511 62.1431H24.4847L11.983 43.4327V62.1431H0V1.22346H11.9934Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="kp-logo" viewBox="0 0 456 64">
+    <path d="M11.9934 1.22346V19.9339L24.4951 1.22346H39.0511L17.9071 23.1508L56.512 1.22346V15.1455L21.8495 28.3715L56.512 25.0703V38.2963L21.8495 34.9951L56.512 48.221V62.1431L17.9071 40.2158L39.0511 62.1431H24.4847L11.983 43.4327V62.1431H0V1.22346H11.9934Z" fill="url(#kpGrad)"/>
+    <path d="M65.0609 1.22346H79.1812L77.0439 40.6377L94.5879 1.22346H106.146V62.1326H92.0253L94.1625 22.7183L76.6186 62.1326H65.0609V1.22346Z" fill="url(#kpGrad)"/>
+    <path d="M114.705 1.22346H128.825V24.7223H140.808V1.22346H154.928V62.1326H140.808V34.2884H128.825V62.1326H114.705V1.22346Z" fill="url(#kpGrad)"/>
+    <path d="M161.433 31.6833C161.433 14.2807 169.308 0.0105573 185.14 0.0105573C200.972 0.0105573 208.847 14.2807 208.847 31.6833C208.847 49.0859 200.972 63.356 185.14 63.356C169.308 63.356 161.433 49.0859 161.433 31.6833ZM185.14 54.3067C190.701 54.3067 193.959 44.2976 193.959 31.6833C193.959 19.069 190.701 9.05992 185.14 9.05992C179.579 9.05992 176.321 19.069 176.321 31.6833C176.332 44.2976 179.579 54.3067 185.14 54.3067Z" fill="url(#kpGrad)"/>
+    <path d="M215.352 1.22346H256.011V62.1326H241.891V10.7896H229.482V62.1326H215.362V1.22346H215.352Z" fill="url(#kpGrad)"/>
+    <path d="M262.516 31.6833C262.516 14.2807 270.39 0.0105573 286.222 0.0105573C302.055 0.0105573 309.929 14.2807 309.929 31.6833C309.929 49.0859 302.055 63.356 286.222 63.356C270.39 63.356 262.516 49.0859 262.516 31.6833ZM286.233 54.3067C291.794 54.3067 295.052 44.2976 295.052 31.6833C295.052 19.069 291.794 9.05992 286.233 9.05992C280.672 9.05992 277.414 19.069 277.414 31.6833C277.414 44.2976 280.662 54.3067 286.233 54.3067Z" fill="url(#kpGrad)"/>
+    <path d="M316.445 1.22346H330.565L328.428 40.6377L345.972 1.22346H357.529V62.1326H343.409L345.546 22.7183L328.002 62.1326H316.445V1.22346Z" fill="url(#kpGrad)"/>
+    <path d="M395.097 40.6377L408.532 42.726L408.107 44.8144C405.793 56.1313 398.78 63.3455 387.222 63.3455C371.39 63.3455 364.024 49.0754 364.024 31.6727C364.024 14.2701 371.39 0 387.222 0C398.354 0 405.451 7.22472 407.941 17.835L408.366 19.6597L394.588 22.7921C393.561 14.3545 391.082 9.03882 387.222 9.03882C381.661 9.03882 378.922 19.0479 378.922 31.6622C378.922 44.2765 381.661 54.2856 387.222 54.2856C391.424 54.3067 394.07 48.6429 395.097 40.6377Z" fill="url(#kpGrad)"/>
+    <path d="M414.352 1.22346H428.473V28.6352L440.03 1.22346H454.586L437.893 30.7235L455.012 62.1326H439.18L428.483 34.7208V62.1326H414.363V1.22346H414.352Z" fill="url(#kpGrad)"/>
+  </symbol>
+</svg>
+<div class="app">
+
+  <!-- START -->
+  <div class="view on" id="v-start">
+    <div class="rays-bg"></div>
+    <div class="top z1">
+      <div class="brand">Кинопоиск</div>
+      <div class="pill">эмодзи-игра</div>
+    </div>
+    <div class="center z1">
+      <div class="wordmark"><svg viewBox="0 0 456 64"><use href="#kp-logo"/></svg></div>
+      <h1>Угадай фильм<br>по <span class="o">эмодзи</span></h1>
+      <p class="lead">7 кинозагадок. Угадай минимум 5 —<br>и забирай промокод на подписку.<br>Серия из 3 верных подряд даёт бонус ×2!</p>
+      <button class="btn" onclick="startGame()">Начать игру</button>
+    </div>
+  </div>
+
+  <!-- GAME -->
+  <div class="view" id="v-game">
+    <div class="top">
+      <div class="brand">Кинопоиск</div>
+      <div class="hud">
+        <div class="pill" id="streak-pill">🔥 <b id="streak">0</b></div>
+        <div class="pill">⭐ <b id="score">0</b></div>
+      </div>
+    </div>
+    <div class="progress" id="progress"></div>
+    <div class="frame">
+      <div class="letterbox"><span>KINOPOISK</span><div class="rec">REC</div></div>
+      <div class="screen"><div class="emoji" id="emoji"></div></div>
+      <div class="letterbox"><span id="round-label">СЦЕНА 1 / 7</span><span>▸ ▸ ▸</span></div>
+    </div>
+    <div class="answers" id="answers"></div>
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <!-- WIN -->
+  <div class="view" id="v-win">
+    <div class="rays-bg"></div>
+    <div class="center z1">
+      <div class="big-emoji">🏆</div>
+      <h1>Ты настоящий <span class="o">киноман</span>!</h1>
+      <div class="stats">
+        <div class="stat"><b id="final-correct">0/7</b><span>угадано</span></div>
+        <div class="stat"><b id="final-score">0</b><span>очков</span></div>
+      </div>
+      <div class="promo-card">
+        <div class="promo-label">ТВОЙ ПРОМОКОД</div>
+        <a class="promo-code" id="promo" href="https://plus.yandex.uz/gift?promoName=CACT_UZ_KP_PERF_TITLES&amp;promocode=NB2CWEFT8N&amp;utm_source=telegram_ads&amp;utm_medium=paid_performance&amp;utm_campaign=MSCAMP-3_%5BKP-P%5D_%7BWS:N%7D_UZ-171_goal-PL_Category_Telegram-Ads_CHM_NB2CWEFT8N" target="_blank" onclick="haptic('medium')">NB2CWEFT8N</a>
+        <div class="promo-note" id="promo-note">Нажми на код, чтобы активировать подписку</div>
+      </div>
+      <a class="btn link" href="https://plus.yandex.uz/gift?promoName=CACT_UZ_KP_PERF_TITLES&amp;promocode=NB2CWEFT8N&amp;utm_source=telegram_ads&amp;utm_medium=paid_performance&amp;utm_campaign=MSCAMP-3_%5BKP-P%5D_%7BWS:N%7D_UZ-171_goal-PL_Category_Telegram-Ads_CHM_NB2CWEFT8N" target="_blank" onclick="haptic('medium')">Активировать промокод</a>
+      <button class="btn ghost" onclick="startGame()">Сыграть ещё раз</button>
+    </div>
+  </div>
+
+  <!-- LOSE -->
+  <div class="view" id="v-lose">
+    <div class="center">
+      <div class="big-emoji">🎞️</div>
+      <h1>Почти <span class="o">получилось</span>!</h1>
+      <div class="stats">
+        <div class="stat"><b id="lose-correct">0/7</b><span>угадано</span></div>
+        <div class="stat"><b>5/7</b><span>нужно</span></div>
+      </div>
+      <p class="lead">Промокод открывается за 5 верных ответов.<br>Загадки каждый раз новые — попробуй ещё!</p>
+      <button class="btn" onclick="startGame()">Попробовать снова</button>
+    </div>
+  </div>
+
+</div>
+<div class="confetti" id="confetti"></div>
+
+<script>
+// ---------- Telegram WebApp ----------
+const tg = window.Telegram?.WebApp;
+if (tg) { tg.ready(); tg.expand(); tg.setHeaderColor('#0C0C0F'); tg.setBackgroundColor('#0C0C0F'); }
+function haptic(type) {
+  try {
+    if (!tg?.HapticFeedback) return;
+    if (type === 'good') tg.HapticFeedback.notificationOccurred('success');
+    else if (type === 'bad') tg.HapticFeedback.notificationOccurred('error');
+    else tg.HapticFeedback.impactOccurred(type || 'light');
+  } catch(e) {}
+}
+
+// ---------- Пул загадок (расширяется без правки логики) ----------
+const POOL = [
+  { e: "🦁👑🌅", a: "Король Лев", w: ["Мадагаскар", "Зверополис", "Книга джунглей"] },
+  { e: "🚢🧊💔", a: "Титаник", w: ["Посейдон", "Идеальный шторм", "Пираты Карибского моря"] },
+  { e: "🧔🎄🍾✈️", a: "Ирония судьбы", w: ["Ёлки", "Джентльмены удачи", "Служебный роман"] },
+  { e: "💍🌋🧙‍♂️", a: "Властелин колец", w: ["Гарри Поттер", "Хоббит", "Игра престолов"] },
+  { e: "🚀🌽⏳🕳️", a: "Интерстеллар", w: ["Гравитация", "Марсианин", "Начало"] },
+  { e: "💊🔴🔵🕶️", a: "Матрица", w: ["Джон Уик", "Эквилибриум", "Бегущий по лезвию"] },
+  { e: "🦈🏖️😱", a: "Челюсти", w: ["Мег", "Отмель", "Пираньи"] },
+  { e: "🃏🦇🌃", a: "Тёмный рыцарь", w: ["Джокер", "Веном", "Хранители"] },
+  { e: "🧊❄️👭⛄", a: "Холодное сердце", w: ["Моана", "Рапунцель", "Снежная королева"] },
+  { e: "🤖❤️🌱🚀", a: "ВАЛЛ-И", w: ["Робот по имени Чаппи", "Я, робот", "Двухсотлетний человек"] },
+  { e: "🏃🍫🪶🦐", a: "Форрест Гамп", w: ["Зелёная миля", "Терминал", "Поймай меня, если сможешь"] },
+  { e: "🚗⚡🕰️👨‍🔬", a: "Назад в будущее", w: ["Терминатор", "Люди в чёрном", "Тачки"] },
+  { e: "👦🏠😱🎄", a: "Один дома", w: ["Ёлки", "Гринч", "Реальная любовь"] },
+  { e: "🐼🥋🍜", a: "Кунг-фу Панда", w: ["Мулан", "Черепашки-ниндзя", "По ту сторону изгороди"] }
+];
+
+const TOTAL = 7, NEED = 5;
+let deck = [], round = 0, score = 0, streak = 0, correct = 0, locked = false;
+
+const $ = id => document.getElementById(id);
+function show(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
+  $(id).classList.add('on');
+}
+const shuffle = arr => arr.map(x => [Math.random(), x]).sort((a,b) => a[0]-b[0]).map(x => x[1]);
+
+function startGame() {
+  deck = shuffle(POOL).slice(0, TOTAL);
+  round = 0; score = 0; streak = 0; correct = 0;
+  $('progress').innerHTML = Array.from({length: TOTAL}, () => '<div class="seg"></div>').join('');
+  haptic('light');
+  show('v-game');
+  renderRound();
+}
+
+function renderRound() {
+  locked = false;
+  const q = deck[round];
+  $('emoji').style.animation = 'none'; void $('emoji').offsetWidth; $('emoji').style.animation = '';
+  $('emoji').textContent = q.e;
+  $('round-label').textContent = `СЦЕНА ${round + 1} / ${TOTAL}`;
+  $('score').textContent = score;
+  $('streak').textContent = streak;
+  $('streak-pill').classList.toggle('streak-on', streak >= 2);
+  $('toast').className = 'toast';
+
+  document.querySelectorAll('.seg').forEach((s, i) => s.classList.toggle('active', i === round));
+
+  const opts = shuffle([q.a, ...q.w]);
+  $('answers').innerHTML = opts.map(o =>
+    `<button class="answer" onclick="pick(this, ${o === q.a})">${o}</button>`
+  ).join('');
+}
+
+function pick(btn, isRight) {
+  if (locked) return; locked = true;
+  const segs = document.querySelectorAll('.seg');
+  segs[round].classList.remove('active');
+  document.querySelectorAll('.answer').forEach(b => { if (b !== btn) b.classList.add('dim'); });
+
+  const toast = $('toast');
+  if (isRight) {
+    btn.classList.add('correct');
+    segs[round].classList.add('done-good');
+    correct++; streak++;
+    const bonus = streak >= 3 ? 2 : 1;
+    score += 10 * bonus;
+    toast.textContent = bonus === 2 ? `🔥 Серия! +${10*bonus} очков` : '+10 очков';
+    toast.className = 'toast show ' + (bonus === 2 ? 'bonus' : 'good');
+    haptic('good');
+  } else {
+    btn.classList.add('wrong');
+    segs[round].classList.add('done-bad');
+    streak = 0;
+    // подсветить правильный
+    document.querySelectorAll('.answer').forEach(b => {
+      if (b.getAttribute('onclick').includes('true')) { b.classList.add('correct'); b.classList.remove('dim'); }
+    });
+    toast.textContent = 'Эх, не тот фильм';
+    toast.className = 'toast show bad';
+    haptic('bad');
+  }
+  $('score').textContent = score;
+  $('streak').textContent = streak;
+
+  setTimeout(() => {
+    round++;
+    if (round < TOTAL) renderRound();
+    else finish();
+  }, 1300);
+}
+
+function finish() {
+  if (correct >= NEED) {
+    $('final-correct').textContent = `${correct}/${TOTAL}`;
+    $('final-score').textContent = score;
+    show('v-win');
+    confetti();
+    haptic('good');
+  } else {
+    $('lose-correct').textContent = `${correct}/${TOTAL}`;
+    show('v-lose');
+  }
+}
+
+function copyPromo() {
+  const code = $('promo').textContent.trim();
+  const done = () => {
+    $('promo-note').textContent = '✓ Скопировано! Вставь код на странице активации';
+    $('promo-note').classList.add('copied');
+    haptic('medium');
+  };
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(code).then(done).catch(done);
+  else done();
+}
+
+function confetti() {
+  const box = $('confetti');
+  const colors = ['#FF5500', '#FFC94D', '#3DBB6A', '#F2F0EC'];
+  box.innerHTML = '';
+  for (let i = 0; i < 60; i++) {
+    const b = document.createElement('div');
+    b.className = 'c-bit';
+    b.style.left = Math.random() * 100 + 'vw';
+    b.style.background = colors[i % colors.length];
+    b.style.animationDuration = (2.2 + Math.random() * 1.8) + 's';
+    b.style.animationDelay = (Math.random() * .8) + 's';
+    b.style.transform = `rotate(${Math.random() * 360}deg)`;
+    box.appendChild(b);
+  }
+  setTimeout(() => box.innerHTML = '', 4500);
+}
+</script>
+</body>
+</html>
