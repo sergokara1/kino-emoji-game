@@ -1,1 +1,415 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Kino-emodzi — filmni toping</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --kp-orange: #FF5500;
+    --kp-orange-soft: #FF7A33;
+    --bg: #0C0C0F;
+    --panel: #17171C;
+    --panel-2: #1F1F26;
+    --text: #F2F0EC;
+    --text-dim: #9B9AA3;
+    --good: #3DBB6A;
+    --bad: #E0453A;
+    --gold: #FFC94D;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overflow-x: hidden;
+    user-select: none;
+  }
+  .app { max-width: 420px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; padding: 16px 16px 24px; }
 
+  /* ---------- Брендинг Кинопоиска ---------- */
+  .rays-bg {
+    position: absolute; inset: -25% -45%; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(ellipse 60% 40% at 50% 42%, var(--bg) 0 60%, rgba(12,12,15,0) 80%),
+      repeating-conic-gradient(from 0deg at 50% 42%,
+        rgba(255,85,0,0) 0deg 4.4deg,
+        rgba(255,110,20,.5) 4.4deg 5deg);
+    animation: rays-glow 5s ease-in-out infinite;
+  }
+  @keyframes rays-glow { 50% { opacity: .5; } }
+  .wordmark {
+    display: flex; align-items: center; justify-content: center; margin-bottom: 22px;
+    filter: drop-shadow(0 0 24px rgba(255,85,0,.35));
+  }
+  .wordmark svg { width: min(76vw, 300px); height: auto; }
+  .z1 { position: relative; z-index: 1; }
+
+  /* ---------- Header ---------- */
+  .top {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: .2px; }
+  .brand-dot { width: 22px; height: 22px; border-radius: 6px; background: var(--kp-orange); display: grid; place-items: center; font-size: 13px; }
+  .hud { display: flex; gap: 8px; }
+  .pill {
+    background: var(--panel); border-radius: 999px; padding: 6px 12px;
+    font-size: 13px; font-weight: 700; color: var(--text-dim);
+    display: flex; align-items: center; gap: 5px;
+  }
+  .pill b { color: var(--text); }
+  .pill.streak-on { background: rgba(255,85,0,.16); color: var(--kp-orange-soft); }
+  .pill.streak-on b { color: var(--kp-orange-soft); }
+
+  /* ---------- Progress ---------- */
+  .progress { display: flex; gap: 5px; margin-bottom: 18px; }
+  .seg { flex: 1; height: 5px; border-radius: 3px; background: var(--panel-2); transition: background .3s; }
+  .seg.done-good { background: var(--good); }
+  .seg.done-bad { background: var(--bad); }
+  .seg.active { background: var(--kp-orange); animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity: .45; } }
+
+  /* ---------- Film frame (signature) ---------- */
+  .frame {
+    background: #000; border-radius: 18px; overflow: hidden;
+    box-shadow: 0 0 0 1px #26262e, 0 18px 40px -18px rgba(255,85,0,.35);
+    margin-bottom: 18px;
+  }
+  .letterbox { height: 26px; background: #050506; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; }
+  .letterbox span { font-size: 10px; letter-spacing: 2.5px; color: #4a4a54; font-weight: 700; }
+  .rec { display: flex; align-items: center; gap: 5px; font-size: 10px; color: #4a4a54; letter-spacing: 2px; font-weight: 700; }
+  .rec::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--bad); animation: pulse 1.4s infinite; }
+  .screen {
+    min-height: 150px; display: grid; place-items: center; padding: 24px 16px;
+    background: radial-gradient(120% 120% at 50% 0%, #1d1d24 0%, #101014 70%);
+  }
+  .emoji {
+    font-size: 44px; letter-spacing: 8px; text-align: center; line-height: 1.35;
+    animation: drop .45s cubic-bezier(.2,.9,.3,1.2);
+  }
+  @keyframes drop { from { transform: translateY(-14px) scale(.9); opacity: 0; } }
+  .hint { text-align: center; color: var(--text-dim); font-size: 13px; padding-bottom: 14px; }
+
+  /* ---------- Answers ---------- */
+  .answers { display: flex; flex-direction: column; gap: 10px; }
+  .answer {
+    background: var(--panel); border: 1px solid #26262e; border-radius: 14px;
+    padding: 15px 16px; font-size: 15.5px; font-weight: 600; color: var(--text);
+    text-align: left; width: 100%; cursor: pointer; transition: transform .08s, background .2s, border-color .2s;
+  }
+  .answer:active { transform: scale(.98); }
+  .answer.correct { background: rgba(61,187,106,.16); border-color: var(--good); color: var(--good); }
+  .answer.wrong { background: rgba(224,69,58,.14); border-color: var(--bad); color: var(--bad); animation: shake .35s; }
+  .answer.dim { opacity: .38; }
+  @keyframes shake { 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+
+  .toast {
+    text-align: center; font-weight: 800; font-size: 15px; height: 24px; margin-top: 14px;
+    opacity: 0; transition: opacity .2s;
+  }
+  .toast.show { opacity: 1; }
+  .toast.good { color: var(--good); }
+  .toast.bad { color: var(--bad); }
+  .toast.bonus { color: var(--gold); }
+
+  /* ---------- Screens ---------- */
+  .view { display: none; flex: 1; flex-direction: column; position: relative; }
+  .view.on { display: flex; animation: fade .35s; }
+  @keyframes fade { from { opacity: 0; transform: translateY(8px); } }
+
+  .center { flex: 1; display: flex; flex-direction: column; justify-content: center; text-align: center; }
+  h1 { font-size: 27px; font-weight: 800; line-height: 1.2; margin-bottom: 10px; }
+  h1 .o { color: var(--kp-orange); }
+  .lead { color: var(--text-dim); font-size: 15px; line-height: 1.5; margin-bottom: 26px; }
+  .big-emoji { font-size: 62px; margin-bottom: 18px; }
+
+  .btn {
+    background: var(--kp-orange); color: #fff; border: none; border-radius: 14px;
+    padding: 16px; font-size: 16px; font-weight: 800; width: 100%; cursor: pointer;
+    transition: transform .08s, filter .2s;
+  }
+  .btn:active { transform: scale(.97); filter: brightness(1.1); }
+  .btn.ghost { background: var(--panel); color: var(--text); margin-top: 10px; }
+  .btn.link { text-decoration: none; display: block; text-align: center; }
+
+  /* ---------- Promo ---------- */
+  .promo-card {
+    background: linear-gradient(150deg, #241407 0%, #17171C 55%);
+    border: 1px solid rgba(255,85,0,.4); border-radius: 18px;
+    padding: 22px 18px; margin-bottom: 18px;
+  }
+  .promo-label { font-size: 12px; letter-spacing: 2px; color: var(--kp-orange-soft); font-weight: 800; margin-bottom: 10px; }
+  .promo-code {
+    display: block; text-decoration: none;
+    background: #0C0C0F; border: 1.5px dashed rgba(255,85,0,.55); border-radius: 12px;
+    padding: 14px; font-size: 22px; font-weight: 800; letter-spacing: 3px;
+    font-family: "SF Mono", Menlo, monospace; color: var(--text); cursor: pointer;
+    transition: border-color .2s;
+  }
+  .promo-code:active { border-color: var(--kp-orange); }
+  .promo-note { font-size: 12.5px; color: var(--text-dim); margin-top: 10px; }
+  .copied { color: var(--good) !important; font-weight: 700; }
+
+  .stats { display: flex; gap: 10px; justify-content: center; margin-bottom: 22px; }
+  .stat { background: var(--panel); border-radius: 14px; padding: 12px 18px; min-width: 88px; }
+  .stat b { display: block; font-size: 22px; font-weight: 800; }
+  .stat span { font-size: 12px; color: var(--text-dim); }
+
+  /* ---------- Confetti ---------- */
+  .confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 5; }
+  .c-bit { position: absolute; width: 8px; height: 12px; top: -20px; animation: fall linear forwards; }
+  @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
+</style>
+</head>
+<body>
+<!-- Официальный логотип Кинопоиска (латиница) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <radialGradient id="kpGrad" cx="0" cy="0" r="1" gradientTransform="matrix(543.306 49.8169 -7.7006 112.947 -16.6102 -10.7225)" gradientUnits="userSpaceOnUse">
+      <stop offset="0.403893" stop-color="#FF5300"/>
+      <stop offset="0.808368" stop-color="#B9FF00"/>
+      <stop offset="1" stop-color="#00FFBF"/>
+    </radialGradient>
+  </defs>
+  <symbol id="kp-k" viewBox="0 0 52 57">
+    <path d="M0 1.09119H10.9597V17.9245L22.3939 1.09119H35.7068L16.3684 20.8187L51.6767 1.09119V13.6166L19.9742 25.5157L51.6767 22.5456V34.4448L19.9742 31.4748L51.6767 43.3739V55.8993L16.3684 36.1718L35.7068 55.8993H22.3939L10.9597 39.0659V55.8993H0V1.09119Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="kp-logo" viewBox="0 0 359 57">
+    <path d="M0 1.09119H10.9597V17.9245L22.3939 1.09119H35.7068L16.3684 20.8187L51.6767 1.09119V13.6166L19.9742 25.5157L51.6767 22.5456V34.4448L19.9742 31.4748L51.6767 43.3739V55.8993L16.3684 36.1718L35.7068 55.8993H22.3939L10.9597 39.0659V55.8993H0V1.09119Z" fill="url(#kpGrad)"/>
+    <path d="M59.4956 1.09119H72.41V55.8898H59.4956V1.09119Z" fill="url(#kpGrad)"/>
+    <path d="M105.061 55.8993L89.2434 21.1413L90.809 55.8993H80.2384V1.10069H91.9856L107.804 35.8586L106.238 1.10069H116.809V55.8993H105.061Z" fill="url(#kpGrad)"/>
+    <path d="M122.749 28.4952C122.749 12.8385 129.951 0 144.431 0C158.911 0 166.113 12.8385 166.113 28.4952C166.113 44.152 158.911 56.9905 144.431 56.9905C129.951 56.9905 122.749 44.152 122.749 28.4952ZM144.44 48.849C149.526 48.849 152.506 39.844 152.506 28.4952C152.506 17.1465 149.526 8.14146 144.44 8.14146C139.354 8.14146 136.375 17.1465 136.375 28.4952C136.375 39.844 139.345 48.849 144.44 48.849Z" fill="url(#kpGrad)"/>
+    <path d="M208.159 18.864C208.159 30.6113 199.704 36.874 187.957 36.874H184.977V55.8993H172.063V1.1007H187.957C199.704 1.09121 208.159 6.41453 208.159 18.864ZM184.987 9.70717V28.7325H187.027C191.724 28.7325 195.244 25.288 195.244 18.864C195.244 12.44 191.724 9.70717 187.027 9.70717H184.987Z" fill="url(#kpGrad)"/>
+    <path d="M211.992 28.4952C211.992 12.8385 219.194 0 233.674 0C248.154 0 255.357 12.8385 255.357 28.4952C255.357 44.152 248.154 56.9905 233.674 56.9905C219.194 56.9905 211.992 44.152 211.992 28.4952ZM233.674 48.849C238.76 48.849 241.74 39.844 241.74 28.4952C241.74 17.1465 238.76 8.14146 233.674 8.14146C228.588 8.14146 225.609 17.1465 225.609 28.4952C225.618 39.844 228.588 48.849 233.674 48.849Z" fill="url(#kpGrad)"/>
+    <path d="M261.306 1.09119H274.221V55.8898H261.306V1.09119Z" fill="url(#kpGrad)"/>
+    <path d="M294.897 33.3535C284.639 27.9543 280.806 23.1815 280.806 15.894C280.806 6.42401 287.619 0 297.876 0C307.659 0 314.008 4.62108 315.886 13.0757L316.2 14.4896L303.987 16.4443C303.285 10.8838 301.245 7.98966 297.801 7.98966C294.745 7.98966 292.79 10.1057 292.79 13.3129C292.79 16.8333 294.669 18.8734 302.26 23.096C312.281 28.6565 315.886 33.2777 315.886 40.5557C315.886 50.576 308.997 57 298.275 57C287.942 57 281.29 52.692 279.411 43.687L279.098 42.1972L291.699 40.0053C292.401 45.8789 294.517 49.0103 298.199 49.0103C301.33 49.0103 303.598 46.8184 303.598 43.0608C303.589 39.2177 301.549 36.8739 294.897 33.3535Z" fill="url(#kpGrad)"/>
+    <path d="M321.665 1.09119H334.58V25.7529L345.15 1.09119H358.463L343.195 27.6318L358.852 55.8898H344.372L334.589 31.228V55.8898H321.665V1.09119Z" fill="url(#kpGrad)"/>
+  </symbol>
+</svg>
+<div class="app">
+
+  <!-- START -->
+  <div class="view on" id="v-start">
+    <div class="rays-bg"></div>
+    <div class="top z1">
+      <div class="brand">Kinopoisk</div>
+      <div class="pill">emodzi o‘yin</div>
+    </div>
+    <div class="center z1">
+      <div class="wordmark"><svg viewBox="0 0 359 57"><use href="#kp-logo"/></svg></div>
+      <h1><span class="o">Emodzi</span> orqali<br>filmni toping</h1>
+      <p class="lead">7 ta kino topishmoq. Kamida 5 tasini toping —<br>va Kinopoisk’dan sirli sovg‘ani qo‘lga kiriting.<br>Ketma-ket 3 ta to‘g‘ri javob ×2 bonus beradi!</p>
+      <button class="btn" onclick="startGame()">O‘yinni boshlash</button>
+    </div>
+  </div>
+
+  <!-- GAME -->
+  <div class="view" id="v-game">
+    <div class="top">
+      <div class="brand">Kinopoisk</div>
+      <div class="hud">
+        <div class="pill" id="streak-pill">🔥 <b id="streak">0</b></div>
+        <div class="pill">⭐ <b id="score">0</b></div>
+      </div>
+    </div>
+    <div class="progress" id="progress"></div>
+    <div class="frame">
+      <div class="letterbox"><span>KINOPOISK</span><div class="rec">REC</div></div>
+      <div class="screen"><div class="emoji" id="emoji"></div></div>
+      <div class="letterbox"><span id="round-label">SAHNA 1 / 7</span><span>▸ ▸ ▸</span></div>
+    </div>
+    <div class="answers" id="answers"></div>
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <!-- WIN -->
+  <div class="view" id="v-win">
+    <div class="rays-bg"></div>
+    <div class="center z1">
+      <div class="big-emoji">🏆</div>
+      <h1>Haqiqiy <span class="o">kinoman</span> ekansiz!</h1>
+      <p class="lead" style="margin-bottom:16px">Obunani sovg‘a qilamiz — 30 kun bepul tomosha qiling!</p>
+      <div class="stats">
+        <div class="stat"><b id="final-correct">0/7</b><span>topildi</span></div>
+        <div class="stat"><b id="final-score">0</b><span>ball</span></div>
+      </div>
+      <div class="promo-card">
+        <div class="promo-label">SIZNING PROMOKODINGIZ</div>
+        <a class="promo-code" id="promo" href="https://clck.ru/3UYEmV" target="_blank" onclick="haptic('medium')">NB2CWEFT8N</a>
+        <div class="promo-note" id="promo-note">Obunani faollashtirish uchun kodni bosing</div>
+      </div>
+      <a class="btn link" href="https://clck.ru/3UYEmV" target="_blank" onclick="haptic('medium')">Promokodni faollashtirish</a>
+      <button class="btn ghost" onclick="startGame()">Yana o‘ynash</button>
+    </div>
+  </div>
+
+  <!-- LOSE -->
+  <div class="view" id="v-lose">
+    <div class="center">
+      <div class="big-emoji">🎞️</div>
+      <h1>Deyarli <span class="o">uddaladingiz</span>!</h1>
+      <div class="stats">
+        <div class="stat"><b id="lose-correct">0/7</b><span>topildi</span></div>
+        <div class="stat"><b>5/7</b><span>kerak</span></div>
+      </div>
+      <p class="lead">5 ta to‘g‘ri javob uchun promokod ochiladi.<br>Har safar yangi topishmoqlar — yana bir bor sinab ko‘ring!</p>
+      <button class="btn" onclick="startGame()">Yana urinib ko‘rish</button>
+    </div>
+  </div>
+
+</div>
+<div class="confetti" id="confetti"></div>
+
+<script>
+// ---------- Telegram WebApp ----------
+const tg = window.Telegram?.WebApp;
+if (tg) { tg.ready(); tg.expand(); tg.setHeaderColor('#0C0C0F'); tg.setBackgroundColor('#0C0C0F'); }
+function haptic(type) {
+  try {
+    if (!tg?.HapticFeedback) return;
+    if (type === 'good') tg.HapticFeedback.notificationOccurred('success');
+    else if (type === 'bad') tg.HapticFeedback.notificationOccurred('error');
+    else tg.HapticFeedback.impactOccurred(type || 'light');
+  } catch(e) {}
+}
+
+// ---------- Пул загадок (расширяется без правки логики) ----------
+const POOL = [
+  { e: "🦁👑🌅", a: "Qirol Sher", w: ["Madagaskar", "Zootopiya", "The Jungle Book"] },
+  { e: "🚢🧊💔", a: "Titanik", w: ["Poseydon", "The Perfect Storm", "Karib dengizi qaroqchilari"] },
+  { e: "🤠🧸🚀", a: "Toy Story", w: ["Shrek", "The Incredibles", "Minionlar"] },
+  { e: "💍🌋🧙‍♂️", a: "Uzuklar hukmdori", w: ["Garri Potter", "Hobbit", "Taxtlar o‘yini"] },
+  { e: "🚀🌽⏳🕳️", a: "Interstellar", w: ["Gravitatsiya", "Marslik", "Inception"] },
+  { e: "💊🔴🔵🕶️", a: "Matritsa", w: ["John Wick", "Equilibrium", "Blade Runner"] },
+  { e: "🦈🏖️😱", a: "Jaws", w: ["Meg", "The Shallows", "Piranya"] },
+  { e: "🃏🦇🌃", a: "The Dark Knight", w: ["Joker", "Venom", "Watchmen"] },
+  { e: "🧊❄️👭⛄", a: "Muz yurak", w: ["Moana", "Rapunzel", "Qor malikasi"] },
+  { e: "🤖❤️🌱🚀", a: "WALL-E", w: ["Chappie", "I, Robot", "Bicentennial Man"] },
+  { e: "🏃🍫🪶🦐", a: "Forrest Gump", w: ["The Green Mile", "The Terminal", "Catch Me If You Can"] },
+  { e: "🚗⚡🕰️👨‍🔬", a: "Kelajakka qaytib", w: ["Terminator", "Men in Black", "Mashinalar"] },
+  { e: "👦🏠😱🎄", a: "Uyda yolg‘iz", w: ["Grinch", "Love Actually", "Elf"] },
+  { e: "🐼🥋🍜", a: "Kung-fu Panda", w: ["Mulan", "Ninja toshbaqalar", "Madagaskar"] }
+];
+
+const TOTAL = 7, NEED = 5;
+let deck = [], round = 0, score = 0, streak = 0, correct = 0, locked = false;
+
+const $ = id => document.getElementById(id);
+function show(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
+  $(id).classList.add('on');
+}
+const shuffle = arr => arr.map(x => [Math.random(), x]).sort((a,b) => a[0]-b[0]).map(x => x[1]);
+
+function startGame() {
+  deck = shuffle(POOL).slice(0, TOTAL);
+  round = 0; score = 0; streak = 0; correct = 0;
+  $('progress').innerHTML = Array.from({length: TOTAL}, () => '<div class="seg"></div>').join('');
+  haptic('light');
+  show('v-game');
+  renderRound();
+}
+
+function renderRound() {
+  locked = false;
+  const q = deck[round];
+  $('emoji').style.animation = 'none'; void $('emoji').offsetWidth; $('emoji').style.animation = '';
+  $('emoji').textContent = q.e;
+  $('round-label').textContent = `SAHNA ${round + 1} / ${TOTAL}`;
+  $('score').textContent = score;
+  $('streak').textContent = streak;
+  $('streak-pill').classList.toggle('streak-on', streak >= 2);
+  $('toast').className = 'toast';
+
+  document.querySelectorAll('.seg').forEach((s, i) => s.classList.toggle('active', i === round));
+
+  const opts = shuffle([q.a, ...q.w]);
+  $('answers').innerHTML = opts.map(o =>
+    `<button class="answer" onclick="pick(this, ${o === q.a})">${o}</button>`
+  ).join('');
+}
+
+function pick(btn, isRight) {
+  if (locked) return; locked = true;
+  const segs = document.querySelectorAll('.seg');
+  segs[round].classList.remove('active');
+  document.querySelectorAll('.answer').forEach(b => { if (b !== btn) b.classList.add('dim'); });
+
+  const toast = $('toast');
+  if (isRight) {
+    btn.classList.add('correct');
+    segs[round].classList.add('done-good');
+    correct++; streak++;
+    const bonus = streak >= 3 ? 2 : 1;
+    score += 10 * bonus;
+    toast.textContent = bonus === 2 ? `🔥 Seriya! +${10*bonus} ball` : '+10 ball';
+    toast.className = 'toast show ' + (bonus === 2 ? 'bonus' : 'good');
+    haptic('good');
+  } else {
+    btn.classList.add('wrong');
+    segs[round].classList.add('done-bad');
+    streak = 0;
+    // подсветить правильный
+    document.querySelectorAll('.answer').forEach(b => {
+      if (b.getAttribute('onclick').includes('true')) { b.classList.add('correct'); b.classList.remove('dim'); }
+    });
+    toast.textContent = 'Eh, bu boshqa film';
+    toast.className = 'toast show bad';
+    haptic('bad');
+  }
+  $('score').textContent = score;
+  $('streak').textContent = streak;
+
+  setTimeout(() => {
+    round++;
+    if (round < TOTAL) renderRound();
+    else finish();
+  }, 1300);
+}
+
+function finish() {
+  if (correct >= NEED) {
+    $('final-correct').textContent = `${correct}/${TOTAL}`;
+    $('final-score').textContent = score;
+    show('v-win');
+    confetti();
+    haptic('good');
+  } else {
+    $('lose-correct').textContent = `${correct}/${TOTAL}`;
+    show('v-lose');
+  }
+}
+
+function copyPromo() {
+  const code = $('promo').textContent.trim();
+  const done = () => {
+    $('promo-note').textContent = '✓ Nusxalandi! Kodni faollashtirish sahifasiga kiriting';
+    $('promo-note').classList.add('copied');
+    haptic('medium');
+  };
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(code).then(done).catch(done);
+  else done();
+}
+
+function confetti() {
+  const box = $('confetti');
+  const colors = ['#FF5500', '#FFC94D', '#3DBB6A', '#F2F0EC'];
+  box.innerHTML = '';
+  for (let i = 0; i < 60; i++) {
+    const b = document.createElement('div');
+    b.className = 'c-bit';
+    b.style.left = Math.random() * 100 + 'vw';
+    b.style.background = colors[i % colors.length];
+    b.style.animationDuration = (2.2 + Math.random() * 1.8) + 's';
+    b.style.animationDelay = (Math.random() * .8) + 's';
+    b.style.transform = `rotate(${Math.random() * 360}deg)`;
+    box.appendChild(b);
+  }
+  setTimeout(() => box.innerHTML = '', 4500);
+}
+</script>
+</body>
+</html>
